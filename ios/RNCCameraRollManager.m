@@ -418,6 +418,49 @@ RCT_EXPORT_METHOD(getPhotos:(NSDictionary *)params
   });
 }
 
+static PHFetchResult* _getAssetsByIds(NSArray<NSString *> *assetIds) {
+  PHFetchOptions *options = [PHFetchOptions new];
+  options.includeHiddenAssets = YES;
+  options.includeAllBurstAssets = YES;
+  options.fetchLimit = assetIds.count;
+  return [PHAsset fetchAssetsWithLocalIdentifiers:assetIds options:options];
+}
+
+RCT_EXPORT_METHOD(requestPhotoAccess:(nonnull NSString *)assetId
+                  resolve:(RCTPromiseResolveBlock)resolve
+                  reject:(RCTPromiseRejectBlock)reject)
+{
+  checkPhotoLibraryConfig();
+  PHAsset *asset = _getAssetsByIds(@[assetId]).firstObject;
+
+  if (!asset) {
+    resolve([NSNull null]);
+    return;
+  }
+
+  if (asset.mediaType == PHAssetMediaTypeImage) {
+    PHContentEditingInputRequestOptions *options = [PHContentEditingInputRequestOptions new];
+    options.networkAccessAllowed = YES;
+
+    [asset requestContentEditingInputWithOptions:options
+                               completionHandler:^(PHContentEditingInput * _Nullable contentEditingInput, NSDictionary * _Nonnull info) {
+        resolve([contentEditingInput.fullSizeImageURL absoluteString]);
+    }];
+  } else if (asset.mediaType == PHAssetMediaTypeVideo) {
+    PHVideoRequestOptions *options = [PHVideoRequestOptions new];
+    options.networkAccessAllowed = YES;
+
+    [[PHImageManager defaultManager] requestAVAssetForVideo:asset
+                                                    options:options
+                                              resultHandler:^(AVAsset * _Nullable asset, AVAudioMix * _Nullable audioMix, NSDictionary * _Nullable info) {
+        AVURLAsset *urlAsset = (AVURLAsset *)asset;
+        resolve([[urlAsset URL] absoluteString]);
+    }];
+  } else {
+    resolve([NSNull null]);
+  }
+}
+
 RCT_EXPORT_METHOD(deletePhotos:(NSArray<NSString *>*)assets
                   resolve:(RCTPromiseResolveBlock)resolve
                   reject:(RCTPromiseRejectBlock)reject)

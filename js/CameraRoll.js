@@ -242,6 +242,10 @@ class CameraRoll {
 
     return promise;
   }
+
+  static requestPhotoAccess(uri: string): string {
+    return RNCCameraRoll.requestPhotoAccess(uri);
+  }
 }
 
 module.exports = CameraRoll;
