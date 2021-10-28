@@ -91,6 +91,22 @@ export default class GetPhotosPerformanceExample extends React.PureComponent<
     }
   };
 
+  componentDidMount() {
+    CameraRoll.getAllLibraryPhotos({
+      include: [
+        'filename',
+        'fileSize',
+        'location',
+        'imageSize',
+        'playableDuration',
+      ],
+    }).then(async data => {
+      // console.log('------------: getAlbums', data[1].assetInfos);
+      data[1].assetInfos.forEach(item => {
+        console.log('---- videos', item.node);
+      });
+    });
+  }
   render() {
     const {
       fetchingPhotos,

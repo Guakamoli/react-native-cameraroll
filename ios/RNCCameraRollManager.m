@@ -218,6 +218,113 @@ RCT_EXPORT_METHOD(getAlbums:(NSDictionary *)params
   resolve(result);
 }
 
+RCT_EXPORT_METHOD(getAllLibraryPhotos:(NSDictionary *)params
+                  resolve:(RCTPromiseResolveBlock)resolve
+                  reject:(RCTPromiseRejectBlock)reject)
+{
+    NSArray<NSString *> *const include = [RCTConvert NSStringArray:params[@"include"]];
+    BOOL __block includeFilename = [include indexOfObject:@"filename"] != NSNotFound;
+    BOOL __block includeFileSize = [include indexOfObject:@"fileSize"] != NSNotFound;
+    BOOL __block includeLocation = [include indexOfObject:@"location"] != NSNotFound;
+    BOOL __block includeImageSize = [include indexOfObject:@"imageSize"] != NSNotFound;
+    BOOL __block includePlayableDuration = [include indexOfObject:@"playableDuration"] != NSNotFound;
+    
+    dispatch_async(dispatch_get_global_queue(0, 0), ^{
+        NSMutableArray *albumArr = [NSMutableArray array];
+        PHFetchOptions *option = [[PHFetchOptions alloc] init];
+        
+        NSString *imageFormat = [NSString stringWithFormat:@"mediaType == %ld", PHAssetMediaTypeImage];
+        NSString *videoFormat = [NSString stringWithFormat:@"mediaType == %ld", PHAssetMediaTypeVideo];
+        NSString *imageAndVideo = [NSString stringWithFormat:@"%@ || (%@)", videoFormat, imageFormat];
+        NSPredicate *predicate = [NSPredicate predicateWithFormat:imageAndVideo];
+        option.predicate = predicate;
+        
+        option.sortDescriptors = @[[NSSortDescriptor sortDescriptorWithKey:@"creationDate" ascending:NO]];
+        
+        PHFetchResult *myPhotoStreamAlbum = [PHAssetCollection fetchAssetCollectionsWithType:PHAssetCollectionTypeAlbum subtype:PHAssetCollectionSubtypeAlbumMyPhotoStream options:nil];
+        
+        PHFetchResult *smartAlbums = [PHAssetCollection fetchAssetCollectionsWithType:PHAssetCollectionTypeSmartAlbum subtype:PHAssetCollectionSubtypeAlbumRegular options:nil];
+        PHFetchResult *topLevelUserCollections = [PHCollectionList fetchTopLevelUserCollectionsWithOptions:nil];
+        PHFetchResult *syncedAlbums = [PHAssetCollection fetchAssetCollectionsWithType:PHAssetCollectionTypeAlbum subtype:PHAssetCollectionSubtypeAlbumSyncedAlbum options:nil];
+        PHFetchResult *sharedAlbums = [PHAssetCollection fetchAssetCollectionsWithType:PHAssetCollectionTypeAlbum subtype:PHAssetCollectionSubtypeAlbumCloudShared options:nil];
+        NSArray *allAlbums = @[myPhotoStreamAlbum,smartAlbums,topLevelUserCollections,syncedAlbums,sharedAlbums];
+        
+        for (PHFetchResult *fetchResult in allAlbums) {
+            
+            for (PHAssetCollection *collection in fetchResult) {
+                
+                if (![collection isKindOfClass:[PHAssetCollection class]]) continue;
+                PHFetchResult *fetchResult = [PHAsset fetchAssetsInAssetCollection:collection options:option];
+                if (fetchResult.count < 1) continue;
+                if ([collection.localizedTitle containsString:@"Deleted"] || [collection.localizedTitle isEqualToString:NSLocalizedString(@"最近删除", nil)]) continue;
+                PHFetchResult<PHAsset *> *const assetsFetchResult = [PHAsset fetchAssetsInAssetCollection:collection options:nil];
+                
+                if (assetsFetchResult.count > 0) {
+                    NSMutableArray *subArray = [@[] mutableCopy];
+                    [assetsFetchResult enumerateObjectsUsingBlock:^(PHAsset * _Nonnull asset, NSUInteger idx, BOOL * _Nonnull stop) {
+                        NSString *const assetMediaTypeLabel = (asset.mediaType == PHAssetMediaTypeVideo
+                                                               ? @"video"
+                                                               : (asset.mediaType == PHAssetMediaTypeImage
+                                                                  ? @"image"
+                                                                  : (asset.mediaType == PHAssetMediaTypeAudio
+                                                                     ? @"audio"
+                                                                     : @"unknown")));
+                        NSString *const uri = [NSString stringWithFormat:@"ph://%@", [asset localIdentifier]];
+                        NSString *_Nullable originalFilename = NULL;
+                        PHAssetResource *_Nullable resource = NULL;
+                        NSNumber* fileSize = [NSNumber numberWithInt:0];
+                        
+                        if (includeFilename || includeFileSize) {
+                            NSArray<PHAssetResource *> *const assetResources = [PHAssetResource assetResourcesForAsset:asset];
+                            resource = [assetResources firstObject];
+                            originalFilename = resource.originalFilename;
+                            fileSize = [resource valueForKey:@"fileSize"];
+                        }
+                        
+                        CLLocation *const loc = asset.location;
+                        
+                        [subArray addObject:@{
+                            @"node": @{
+                                @"type": assetMediaTypeLabel, // TODO: switch to mimeType?
+                                @"group_name": [collection localizedTitle],
+                                @"image": @{
+                                    @"uri": uri,
+                                    @"filename": (includeFilename && originalFilename ? originalFilename : [NSNull null]),
+                                    @"height": (includeImageSize ? @([asset pixelHeight]) : [NSNull null]),
+                                    @"width": (includeImageSize ? @([asset pixelWidth]) : [NSNull null]),
+                                    @"fileSize": (includeFileSize ? fileSize : [NSNull null]),
+                                    @"playableDuration": (includePlayableDuration && asset.mediaType != PHAssetMediaTypeImage
+                                        ? @([asset duration]) // fractional seconds
+                                        : [NSNull null])
+                                },
+                                @"timestamp": @(asset.creationDate.timeIntervalSince1970),
+                                @"location": (includeLocation && loc ? @{
+                                    @"latitude": @(loc.coordinate.latitude),
+                                    @"longitude": @(loc.coordinate.longitude),
+                                    @"altitude": @(loc.altitude),
+                                    @"heading": @(loc.course),
+                                    @"speed": @(loc.speed), // speed in m/s
+                                } : [NSNull null])
+                            }
+                        }];
+                    }];
+                    [albumArr addObject:@{
+                        @"title": [collection localizedTitle],
+                        @"count": @(assetsFetchResult.count),
+                        @"assetInfos":subArray
+                    }];
+                }
+            }
+        }
+        
+        dispatch_async(dispatch_get_main_queue(), ^{
+            if (albumArr.count > 0) {
+                resolve(albumArr);
+            }
+        });
+    });
+}
+
 static void RCTResolvePromise(RCTPromiseResolveBlock resolve,
                               NSArray<NSDictionary<NSString *, id> *> *assets,
                               BOOL hasNextPage)

@@ -92,6 +92,10 @@ export type GetPhotosParams = {
   include?: Include[],
 };
 
+export type GetAllTypes = {
+  include?: Include[],
+};
+
 export type PhotoIdentifier = {
   node: {
     type: string,
@@ -113,6 +117,11 @@ export type PhotoIdentifier = {
       speed?: number,
     } | null,
   },
+};
+export type PhotoInfoType = {
+  title: string,
+  count: number,
+  assetInfo: PhotoIdentifier[],
 };
 
 export type PhotoIdentifiersPage = {
@@ -230,6 +239,22 @@ class CameraRoll {
   static getPhotos(params: GetPhotosParams): Promise<PhotoIdentifiersPage> {
     params = CameraRoll.getParamsWithDefaults(params);
     const promise = RNCCameraRoll.getPhotos(params);
+
+    if (arguments.length > 1) {
+      console.warn(
+        'CameraRoll.getPhotos(tag, success, error) is deprecated.  Use the returned Promise instead',
+      );
+      let successCallback = arguments[1];
+      const errorCallback = arguments[2] || (() => {});
+      promise.then(successCallback, errorCallback);
+    }
+
+    return promise;
+  }
+
+  static getAllLibraryPhotos(params: GetAllTypes): Promise<PhotoInfoType> {
+    params = CameraRoll.getParamsWithDefaults(params);
+    const promise = RNCCameraRoll.getAllLibraryPhotos(params);
 
     if (arguments.length > 1) {
       console.warn(
