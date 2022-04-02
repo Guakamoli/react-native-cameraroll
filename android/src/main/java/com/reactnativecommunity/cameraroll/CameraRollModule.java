@@ -1,6 +1,6 @@
 /**
  * Copyright (c) Facebook, Inc. and its affiliates.
- *
+ * <p>
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
  */
@@ -702,25 +702,42 @@ public class CameraRollModule extends ReactContextBaseJavaModule {
 
             if (photoDescriptor != null) {
                 if (isVideo) {
-                    MediaMetadataRetriever retriever = new MediaMetadataRetriever();
-                    try {
-                        retriever.setDataSource(photoDescriptor.getFileDescriptor());
-                    } catch (RuntimeException e) {
-                        // Do nothing. We can't handle this, and this is usually a system problem
+
+                    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.N) {
+                        try {
+                            ExifInterface exifInterface = new ExifInterface(photoDescriptor.getFileDescriptor());
+                            rotation = exifInterface.getAttributeInt(ExifInterface.TAG_ORIENTATION, ExifInterface.ORIENTATION_NORMAL);
+                            width = exifInterface.getAttributeInt(ExifInterface.TAG_IMAGE_WIDTH, 0);
+                            height = exifInterface.getAttributeInt(ExifInterface.TAG_IMAGE_LENGTH, 0);
+                        } catch (IOException e) {
+                            success = false;
+                            FLog.e(
+                                    ReactConstants.TAG,
+                                    "Number format exception occurred while trying to fetch video metadata for "
+                                            + photoUri.toString(),
+                                    e);
+                        }
+                    } else {
+                        MediaMetadataRetriever retriever = new MediaMetadataRetriever();
+                        try {
+                            retriever.setDataSource(photoDescriptor.getFileDescriptor());
+                        } catch (RuntimeException e) {
+                            // Do nothing. We can't handle this, and this is usually a system problem
+                        }
+                        try {
+                            width = Integer.parseInt(retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH));
+                            rotation = Integer.parseInt(retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_ROTATION));
+                            height = Integer.parseInt(retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT));
+                        } catch (NumberFormatException e) {
+                            success = false;
+                            FLog.e(
+                                    ReactConstants.TAG,
+                                    "Number format exception occurred while trying to fetch video metadata for "
+                                            + photoUri.toString(),
+                                    e);
+                        }
+                        retriever.release();
                     }
-                    try {
-                        width = Integer.parseInt(retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH));
-                        rotation = Integer.parseInt(retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_ROTATION));
-                        height = Integer.parseInt(retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT));
-                    } catch (NumberFormatException e) {
-                        success = false;
-                        FLog.e(
-                                ReactConstants.TAG,
-                                "Number format exception occurred while trying to fetch video metadata for "
-                                        + photoUri.toString(),
-                                e);
-                    }
-                    retriever.release();
                 } else {
                     BitmapFactory.Options options = new BitmapFactory.Options();
                     // Set inJustDecodeBounds to true so we don't actually load the Bitmap, but only get its
@@ -739,7 +756,7 @@ public class CameraRollModule extends ReactContextBaseJavaModule {
             }
 
         }
-        if(rotation == 90 || rotation ==270){
+        if (rotation == 90 || rotation == 270) {
             int tmp = width;
             width = height;
             height = tmp;
